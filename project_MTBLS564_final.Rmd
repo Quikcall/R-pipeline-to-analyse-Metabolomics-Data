@@ -1,0 +1,535 @@
+---
+title: 'Extraction Project: MTBLS564 data Analysis'
+author: 'Mário Varela & Rui Pires'
+
+output:
+  html_document:
+    number_sections: yes
+    theme: cosmo
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+  pdf_document: default
+---
+#Introdução
+
+- Osteoartrite (OA) é uma doença degenerativa que atua nas articulações. É caracterizada por perda de cartilagem na articulação, disfunção da membrana sinovial, esclerose óssea subcondral e formação de osteófitos com o desgaste de proteínas de matriz causadas por protéases. Artrite reumatoide (RA) é uma doença autoimune inflamatória sistémica que afeta o espaço sinovial das articulações. É caracterizada pela inflamação do espaço sinovial e destruição da cartilagem e do próprio osso. O líquido sinovial (SF) da artrite reumatoide apresenta elevadas concentrações de citoquininas, mediadores de inflamação e protéases [1].
+  
+- O SF encontra-se na cavidade da articulação e tem como principal função a lubrificação da mesma. Este líquido contém metabolitos e proteínas sistémicas capazes de sinalizar OA e RA. Além disso, por estar em contacto com tecidos que são os primeiros alvos destas patologias, apresenta potencial para a descoberta de biomarcadores cujos níveis de concentração são alterados nas fases iniciais da doença.
+O estudo em questão apresenta uma comparação direta entre os perfis metabólicos de SF em OA e RA utilizando espetroscopia H1 NMR, e introduz uma nova visão sobre a atividade metabólica nas articulações de pacientes com duas doenças de artrite muito comuns [1].
+
+- Este estudo consiste numa análise por ressonância magnética nuclear (NMR) de SF de dois grupos de pacientes, um com OA e outro com RA, para avaliação da metabólica das doenças e otimização de protocolos para volumes relevantes de SF. Foram efetuados exames NMR aos perfis metabólicos completos de pequenos volumes de SF (100 µL) de ambos os grupos de pacientes. Os pacientes com OA apresentam uma média de idades de 67.4, encontram-se nos estados finais da doença e foram diagnosticados como isentos de RA. Os pacientes com RA apresentam idades semelhantes aos pacientes de OA, com um intervalo de 5 anos. Estes pacientes encontram-se sobre os efeitos da doença RA, em média, há 13 anos. Aquando a experiência, os pacientes com RA receberam vários tratamentos que incluíam medicamentos antirreumáticos (principalmente metotrexato) e inibidores de TNF como o etarnecept [1].  
+  
+#Recolha dos dados
+  
+- Os dados experimentais foram normalizados pela mediana e re-scaled pelo método de Pareto para posteriores análises multivariadas.
+Análises uni variadas foram feitas através de t-tests com um nível de confiança de 95%, enquanto análises multivariadas foram feitas por análise de componente principal (PCA) não supervisionado seguida de uma análise discriminante de mínimos quadrados parciais (PLS-DA).
+A análise referente às vias metabólicas foi feita usando a lista de metabolitos que apresentaram diferenças significativas entre os dois grupos de amostras como argumento para o Metaboanalyst, com referência à base de dados de vias metabólicas do KEGG (Kyoto Encyclopedia of Genes and Genomes)[5]. O esquema das vias metabólicas é representado pelo pathways plot. 
+
+
+#FASE 1
+
+
+## PRÉ PROCESSAMENTO DOS DADOS
+
+- R setup 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+- Packages setup and data reading
+```{r message=FALSE, warning=FALSE, include=FALSE}
+BiocManager::install("MassSpecWavelet", version = "3.8")
+#BiocManager::install("genefilter", version = "3.8")
+BiocManager::install("heatmaps", version = "3.8")
+BiocManager::install("impute", version = "3.8")
+BiocManager::install("FELLA", version = "3.8")
+BiocManager::install("caret", version = "3.8")
+BiocManager::install("specmine")
+BiocManager::install("ipred")
+BiocManager::install("caret")
+
+library(MassSpecWavelet)
+#library(genefilter)
+library(ipred)
+library(impute)
+library(FELLA)
+library(caret)
+library(specmine)
+
+#Data download and reading.
+#get_metabolights_study_files_assay("MTBLS564", 1, "C:/project_extraction/MTBLS564") #Ficheiros de dados
+#get_metabolights_study_metadata_assay("MTBLS564", 1, "C:/project_extraction/MTBLS564") #Ficheiro de metadados
+#get_metabolights_study_samples_files("MTBLS564", 1, "C:/project_extraction/MTBLS564") #Ficheiro samples_files, que faz a correspondencia#entre os nomes das amostras e os nomes dos ficheiros
+
+read_csvs_folder("C:/project_extraction/MTBLS564", header=TRUE, sep=",", dec=".")
+
+MTBLS564_data=read_dataset_csv(filename.data="C:/project_extraction/MTBLS564/hSF_MTBLS_normalised_2.csv",
+filename.meta="C:/project_extraction/MTBLS564/metadata1.csv", type="concentrations", description =
+                                  "Metabolite profiling from MetaboLights study MTBLS564", label.x = "Metabolites", label.values =
+                                  "intensity")
+
+
+
+##Bruker Files
+
+MTBLS564_bruker = read_Bruker_files("C:/project_extraction/MTBLS564/1/data", metadata_file =
+                                      "C:/project_extraction/MTBLS564/metadata1.csv",m.header_col=T, m.header_row=T, samples.names = "C:/project_extraction/MTBLS564/samples_files.csv",
+                                    zipped=T, description="1H NMR Metabolomics", label.x="ppm", label.values="intensity")
+```
+
+###MS-spectra Plots
+```{r echo=TRUE}
+
+sum_dataset(MTBLS564_bruker, stats=T)
+MTBLS564_mv=missingvalues_imputation(MTBLS564_bruker, method = "value", value = 0.000001)
+
+plot_spectra(MTBLS564_mv, "Diagnosis", variable.bounds=c(0,5))
+
+MTBLS564_peaks = detect_nmr_peaks_from_dataset(MTBLS564_mv, baseline_tresh = 50000)
+```
+
+###Picos de interesse:
+```{r echo=TRUE}
+MTBLS564_peaks_proc = normalize(MTBLS564_peaks, method = "median")
+plot_peaks(MTBLS564_peaks_proc, "Diagnosis", variable.bounds=c(0,5))
+
+```
+
+###Boxplot das variáveis tendo em conta a metadata:
+```{r eval=FALSE, include=FALSE}
+boxplot_vars_factor(MTBLS564_peaks, "Diagnosis", variables = row.names(MTBLS564_peaks$data), cex.axis=0.5, cex.main=1, vec.par=c(3,3))
+```
+
+###Boxplot da distribuição das variáveis:
+```{r eval=FALSE, include=FALSE}
+boxplot_vars_factor(MTBLS564_peaks, "Diagnosis", variables = c("3.05", "4.27"))
+```
+
+
+###Visualização dos dados dos metabolitos:
+```{r echo=TRUE}
+sum_dataset(MTBLS564_data)
+MTBLS564_data$data[1:6,1:6]
+MTBLS564_data$metadata[1:6,]
+```
+###Organizar dados em subconjuntos('subset') de acordo com a metadata
+```{r echo=TRUE}
+MTBLS564_OA_RA=subset_samples_by_metadata_values(MTBLS564_data,"Diagnosis",c("OA", "RA"))
+```
+
+## DESCRIPTIVE STATISTICS 
+
+###Análise uni variada
+
+- As análises uni variadas dos 171 espectros foram feitos por t-tests e identificaram 91 bins significativamente diferentes, que por sua vez correspondem a 32 metabolitos significativamente diferentes entre os dois grupos de pacientes com um intervalo de confiança de 95%. Estes resultados encontram-se na tabelaX. Exemplos de metabolites com diferenças significativas em OA foram o citrato, glucose, creatinina, glutamina, glicerol, piruvato e taurina. Por outro lado, acetato, isoleucina, leucina, sarcosina, 3-hidroxibutirato e treonina são exemplos de metabolitos mais diferenciados em SF de pacientes com RA. 
+
+
+###T test
+```{r include=FALSE}
+#t test
+ttest_MTBLS564_OA_RA=tTests_dataset(MTBLS564_OA_RA, "Diagnosis")
+
+#t test result for significant p values
+ttest_MTBLS564_OA_RA[ttest_MTBLS564_OA_RA$fdr<0.05,]
+significant_MTBLS564 = ttest_MTBLS564_OA_RA[ttest_MTBLS564_OA_RA$fdr<0.05,]
+```
+
+-Selecção de metabolitos com 'p values' significativos:
+```{r echo=TRUE}
+#Metabolites that will remain:
+metabolites = rownames(significant_MTBLS564)
+``` 
+
+- Remover dados não significativos do dataset
+```{r echo=TRUE}
+#Taking the significant metabolites from the diagnosis aside:
+MTBLS564_nrm_metabolites =  subset_x_values(MTBLS564_data, metabolites)
+
+#Get a dataset with only the samples from OA and RA diagnosis:
+MTBLS564_OA_RA_new = subset_samples_by_metadata_values(MTBLS564_nrm_metabolites, "Diagnosis", c("OA", "RA")) 
+```
+
+- Remover samples desconhecidas
+```{r echo=TRUE}
+#Remove unknown samples
+significant_MTBLS564_known = subset_x_values(MTBLS564_OA_RA_new, grep(".*[U,u]nknown.*", rownames(MTBLS564_OA_RA_new$data), value=T, invert=T))
+
+```
+
+###Analysis of significant metabolite data
+
+- Teste t para metabolitos significativos e conhecidos:
+```{r echo=TRUE}
+ttest_significant_MTBLS564_known = tTests_dataset(significant_MTBLS564_known, "Diagnosis")
+```
+- Gráfico do teste t (pvalues) com 'threshold' de 0.05:
+```{r echo=TRUE}
+plot_ttests(significant_MTBLS564_known, ttest_significant_MTBLS564_known, tt.threshold = 0.05)
+```
+
+###Anova 1 way 
+```{r echo=TRUE}
+anova_res=aov_all_vars(significant_MTBLS564_known, "Diagnosis", doTukey = T, write.file = F, file.out = "anova-res.csv")
+```
+
+###Plot of Anova
+```{r echo=TRUE}
+plot_anova(significant_MTBLS564_known, anova_res, anova.threshold = 0.05, reverse.x = F)
+#confirms the significative results from the t test
+```
+
+###Kruskal-Wallis test
+```{r echo=TRUE}
+kruskal_res=kruskalTest_dataset(significant_MTBLS564_known, "Diagnosis", threshold = 0.01, write.file = F, file.out = "kruskal.csv") 
+```
+
+###Plot of Kruskal
+```{r echo=TRUE}
+plot_kruskaltest(significant_MTBLS564_known, kruskal_res, kr.threshold = 0.01)
+```
+
+##DIFFERENTIAL EXPRESSION
+
+- Plots seguintes, mostram a diferença entre os metabolitos de acordo com o diagnóstico
+
+###Boxplot de metabolitos significativos
+
+```{r echo=TRUE}
+#boxplot of significant metabolites
+boxplot_variables(significant_MTBLS564_known, horizontal=F, nhar.label=100, cex.axis=0.5)
+boxplot_vars_factor(significant_MTBLS564_known, "Diagnosis", variables = row.names(significant_MTBLS564_known$data), cex.axis=1, cex.main=1, vec.par=c(3,5))
+```
+
+
+###Fold change
+```{r echo=TRUE}
+fc_MTBLS564_OA_known = fold_change(significant_MTBLS564_known, "Diagnosis", "OA")
+fc_MTBLS564_RA_known = fold_change(significant_MTBLS564_known, "Diagnosis", "RA")
+#fold change plot
+par(mfrow = c(1, 2))
+plot_fold_change(significant_MTBLS564_known, na.omit(fc_MTBLS564_OA_known), 2)
+plot_fold_change(significant_MTBLS564_known, na.omit(fc_MTBLS564_RA_known), 2)
+par(mfrow=c(1, 1))
+```
+
+###Volcano plot
+
+```{r echo=TRUE}
+#volcano plot
+volcano_plot_fc_tt(significant_MTBLS564_known, na.omit(fc_MTBLS564_OA_known), ttest_significant_MTBLS564_known[rownames(fc_MTBLS564_OA_known),], fc.threshold=2, tt.threshold = 0.05)
+```
+
+
+###Heatmap
+
+- Heatmap que mostra metabolitos significativamente diferentes em OA e RA SF (p < 0.05). Azul = baixo, branco = medio, vermelho = alta concentração.
+
+```{r echo=TRUE}
+colors = rev(colorRampPalette(RColorBrewer::brewer.pal(10,"RdBu"))(526))
+stats::heatmap(significant_MTBLS564_known$data, scale="none", Colv=significant_MTBLS564_known$metadata$Diagnosis, margins=c(0,8), cexRow=0.6, cexCol=.4, keep.dendro=TRUE, col=colors, rownames(significant_MTBLS564_known$metadata$Diagnosis))
+```
+
+
+##ENRIQUECIMENTO & PATHWAY ANALYSIS
+
+- Ler nomes dos metabolitos e identificador do CHEBI a partir do dataset originail:
+```{r echo=TRUE}
+signif_mets = row.names(significant_MTBLS564_known$data)
+og_data = read.table('m_mtbls564_metabolite_profiling_NMR_spectroscopy_v2_maf.tsv', header=TRUE, sep='\t')
+all_met_ids = og_data[c(1,5,7)]
+ids = c()
+met_names = c()
+all_met_ids$database_identifier = as.character(all_met_ids$database_identifier)
+all_met_ids$metabolite_identification = as.character(all_met_ids$metabolite_identification)
+```
+
+- Seleção dos nomes dos metabolitos e respectivos identificadores CHEBI a partir dos dados dos metabolitos significantes:
+```{r echo=TRUE}
+for (i in 1:length(all_met_ids$pattern_ID)){
+  if (is.element(all_met_ids$pattern_ID[i], signif_mets)==TRUE){ids[i]= all_met_ids$database_identifier[i];met_names[i]=all_met_ids$metabolite_identification[i]}}
+```
+
+- Exclusão de valores 'NA' e selecção dos identificadores CHEBI e nomes de metabolitos únicos:
+```{r echo=TRUE}
+met_ids = na.omit(ids)
+met_names = unique(met_names)
+met_names = na.omit(met_names)
+met_names = unique(met_names)
+```
+
+- Conversão dos indentificadores CHEBI para KEGG usando a ferramenta online MetaboAnalyst:
+```{r echo=TRUE}
+met_db_ids = read.table('name_map.csv',header=TRUE,sep = ',')
+View(met_db_ids)
+met_kegg_id = data.frame(met_db_ids$KEGG)
+met_kegg_id= met_kegg_id[!apply(met_kegg_id == "", 1, all),] #remove empty cells
+```
+
+- Criar base de dados para 'Homo Sapiens':
+```{r include=FALSE}
+set.seed(1)
+set.seed(1)
+# Filter overview pathways
+graph <- buildGraphFromKEGGREST(  organism = "hsa", filter.path = c("01100", "01200", "01210", "01212", "01230"))
+tmpdir <- paste0(tempdir(), "/my_database")
+unlink(tmpdir, recursive = TRUE)
+buildDataFromGraph(keggdata.graph = graph, databaseDir = tmpdir,internalDir = FALSE,matrices = "diffusion", normality = "diffusion",niter = 50)
+fella.data <- loadKEGGdata( databaseDir = tmpdir, internalDir = FALSE, loadMatrix = "diffusion" )
+```
+
+```{r echo=TRUE}
+fella.data
+cat(getInfo(fella.data))
+```
+
+- Definir para compostos da analise identificadores KEGG dos metabolitos significativos presentes no SF:
+```{r echo=TRUE}
+synovial_fluid_analysis = defineCompounds(compounds = as.character(met_kegg_id), data = fella.data) 
+getInput(synovial_fluid_analysis)
+```
+
+###Enriquecimento
+
+- Usamos o método de difusão:
+```{r echo=TRUE}
+synovial_fluid_analysis = runDiffusion(object = synovial_fluid_analysis, data = fella.data, approx = "normality")
+synovial_fluid_analysis
+```
+
+###Pathways Plot
+
+- Resultados do enriquecimento
+```{r echo=TRUE}
+nlimit <- 50
+vertex.label.cex <- 0.5
+plot(synovial_fluid_analysis, method = "diffusion", data = fella.data, nlimit = nlimit,vertex.label.cex = vertex.label.cex)
+table_all <- generateResultsTable( method = "diffusion", nlimit = 100, object = synovial_fluid_analysis, data = fella.data)
+
+```
+
+
+##CONCLUSÃO - FASE 1
+
+- Neste estudo foram observados maiores níveis de metabolismo anaeróbico em articulações de pacientes com RA do que com OA devido à diminuição de substratos para a glicólise e para o ciclo TCA, e da razão entre glucose e lactato em pacientes com RA. Nestes pacientes, os níveis de substratos para glicólise, como a glucose, alanina, glutamina e tirosina, aumentam aquando uma boa resposta ao tratamento por etanercept, sugerindo que os níveis destes metabolitos aumentam com a diminuição da inflamação [6]. Estes níveis de glucose podem ser explicados pelo metabolismo de fibroblastos residentes no SF e de células imunológicas que surgem em resposta à inflamação, particularmente neutrófilos [7], visto que estas células dependem somente da glicólise para produção de energia [8].
+
+- Além disso, a falta de glucose pode explicar o aumento da atividade cetónica em pacientes de RA, por usa vez sinalizada pelo aumento de isoleucina, leucina e treonina no SF. 
+
+- 3-Hidroxibutirato é um metabolito característico da atividade cetónica e foi encontrado em maiores concentrações em SF de pacientes com RA comparativamente a controlos saudáveis em estudos anteriores [6]. 
+Ao mesmo tempo, em concordância com a literatura onde os níveis de 3-hidroxibutirato diminuem em pacientes com RA quando em tratamento com entanercept, foram observadas concentrações deste metabolito significativamente menores em SF de pacientes com RA do que com OA [6]. 
+
+- A diminuição de lípidos em SF de RA foi estudada anteriormente [9], sendo explicada pelo uso dos mesmos como fonte de energia nas articulações com hipoxia.
+
+- A taurina é característica da patogénese de esclerose óssea subcondral  [10], uma feição presente em ambos os casos de OA e RA [11]. Os níveis de taurina observados neste estudo apresentaram maiores valores em SF de OA do que RA. Isto pode dever-se a uma maior esclerose em pacientes com OA, e ao mesmo tempo servir como indicador do nível a que se encontra a patologia.
+
+
+#FASE 2
+
+##REDUÇÃO DA DIMENSIONALIDADE
+
+-Dado	um	conjunto	alargado	de	variáveis,	descobrir	um conjunto	mais	pequeno	de	variáveis	não	correlacionadas	entre	si	
+que	explicam	a	maior	parte	da	variabilidade	dos	dados usando a técnica de Análise de Componentes Principais (PCA) usando
+os dados significativos.
+
+-Análises por PCA demonstraram separação entre OA e RA . Os resultados demonstram que os perfis metabólicos são mais variáveis em SF de pacientes com RA do que com OA. Uma análise supervisionada por PLS-DA separou com sucesso as amostras referentes a RA e OA.
+
+```{r}
+pca_mtbls564 = pca_analysis_dataset(significant_MTBLS564_known, scale =F, center = F, write.file = F, file.out = "pca") #usa-se dataset normalizado
+```
+
+
+###Tabela de Importância
+
+```{r message=FALSE, warning=FALSE}
+res_imp_pca_concentrations=pca_importance(pca_mtbls564, pcs=1:6) #coluna ordernadas por ordem decrescente dos valores de desvio padrão
+DT::datatable(res_imp_pca_concentrations, options=list(scrollX=T))
+```
+
+###Gráfico que mostra resultados em todos os PCs
+
+- Cada	'principal component'(PC)	é	gerada	de	forma	a	explicar	o	máximo	de	
+variabilidade da	parte	ainda	não	explicada.
+
+- A	PCA	é	sensível	à	escala	dos	dados,	e por isso usam-se os dados normalizados
+
+```{r}
+pca_screeplot(pca_mtbls564)
+```
+
+- 'Elbow method' 
+
+```{r}
+wss = c()
+for (k in 1:24) wss = c(wss, sum(kmeans(significant_MTBLS564_known$data, centers=k)$withinss) )
+plot(1:24, wss, type="b", xlab="Num Clusters", ylab="WSS")
+```
+
+- Conclui-se que, de acordo com o pca e o elbow plot, o PCs que melhor explicam a variabilidade da parte ainda não explicada são o PC1 e 2  
+
+###Scores Plot
+
+```{r}
+#RColorBrewer::display.brewer.all()
+pca_scoresplot2D(significant_MTBLS564_known, pca_mtbls564, "Diagnosis", pcas = c(1,2), ellipses = TRUE, pallette = "Paired")
+#pca_scoresplot3D(significant_MTBLS564_known, pca_mtbls564, "Diagnosis", pcas = c(1,2,3))
+```
+
+###Pairs Plot
+
+```{r message=FALSE, warning=FALSE}
+pca_pairs_plot(significant_MTBLS564_known, pca_mtbls564, "Diagnosis", pcas = c(1,2,3))
+```
+
+###Kmeans Plot
+
+```{r message=FALSE, warning=FALSE}
+pca_kmeans_plot2D(significant_MTBLS564_known, pca_mtbls564, num.clusters = 2)
+pca_kmeans_plot3D(significant_MTBLS564_known, pca_mtbls564, num.clusters = 2, pcas = c(1,2,3))
+```
+
+###Kmeans Pairs Plot
+```{r message=FALSE, warning=FALSE}
+pca_pairs_kmeans_plot(significant_MTBLS564_known, pca_mtbls564, num.clusters = 2, pcas = c(1,2,3,4,5))
+```
+
+
+##CLUSTRERING
+
+- Agrupamento dos dados de acordo do com o seu grau de semelhança, neste caso, em relação ao tipo de diagnóstico, usando o método 'Hierarchical Clustering' e distância Euclidiana
+
+```{r}
+cluster_mtbls564 = clustering(significant_MTBLS564_known, method = "hc", distance = "euclidean", type = "samples", num.clusters = 5, clustMethod = "complete")
+```
+
+###Dendogram
+
+```{r}
+dendrogram_plot_col(significant_MTBLS564_known, cluster_mtbls564, "Diagnosis", title = "Dendogram plot for MTBLS564 samples normalized dataset")
+```
+
+###K-Means Clustering
+
+- O objectivo de K-means clustering é separar n observações em k clusters, em que cada observação pertence ao cluster com a média mais próxima.
+
+- Hierarchical clustering das amostras, usando a distância euclidiana é o método de aglomeração 'complete':
+```{r}
+res_kclust_concentrations = clustering(significant_MTBLS564_known, method="kmeans", num.clusters=2)
+```
+
+###K-means results plot
+
+- Linhas a cinzento representam os valores das amostras desse cluster e a linha azul, a mediana dessas amostras:
+```{r}
+kmeans_plot(significant_MTBLS564_known, res_kclust_concentrations)
+```
+
+##CONCLUSÃO - FASE 2
+
+- De acordo com as observações do 'Pairs Plor' e do 'elbow method' conlcui-se que os PC1 e 2 explicam a maior parte da variância das amostras e por isso é possível observal um nível alto de correlação entre estes;
+
+- No dendograma é possível observar a organização dos dados nos vários clusters. Observa-se que existem algumas amostras de RA SF com um perfil mais próximo de OA SF, do que com amostras com o mesmo diagnóstico. Isto pode ser explicado pela natureza heterógena dos dados recolhidos dos pacientes com RA, uma vez que o SF recolhido destes varia entre pacientes RA em estados e iniciais, menos de 1 anos, e estados mais avançado até mais de 35 anos, sendo que alguns dos pacientes se encontravam sob tratamentos, como glucocorticóides, que têm como objectivo regularizar o metabolismo da glucose, que é afetado nos pacientes com RA, o que leva a ativação das vias metabólicas cetónicas e detrimento da glicólise, isto pode explicar o agrupamento de amostras RA com OA. No entanto no PCA as amostras foram bem divididas de acordo com o seu diagnóstico[1].
+
+
+
+#FASE 3
+
+##MACHINE LEARNING
+
+
+###Análise Preditiva com Aprendizagem Máquina
+
+- Foram feitos 3 de modelos, Neuronal Network, Random Forests e Linead Discriminant Analysis de modo a observar qual a aproximação mais precisa. A fórmula utilizada consiste no diagnóstico possível em função dos valores dos metabolitos para cada amostra.
+
+```{r include=FALSE}
+res_train_model=train_models_performance(significant_MTBLS564_known, c("pls", "rf", "nnet"), "Diagnosis", "cv", metric="Accuracy")
+```
+
+- Resultados do treino dos modelos:
+```{r}
+res_train_model$performance
+
+#Partial Least Squares:
+res_train_model$confusion.matrices$pls
+#Random Forests
+res_train_model$confusion.matrices$rf
+#Neural Network
+res_train_model$confusion.matrices$nnet
+```
+-Teste do Modelo de Partial Least Squares (100% Accuracy) com Predict:
+```{r}
+res_predict_model_pls=predict_samples(res_train_model$final.models$pls, significant_MTBLS564_known$data)
+res_predict_model_pls
+#res_predict_model_rf=predict_samples(res_train_model$final.models$rf, significant_MTBLS564_known$data)
+#res_predict_model_nnet=predict_samples(res_train_model$final.models$nnet, #significant_MTBLS564_known$data)
+```
+
+
+###Selecção de Metabolitos
+
+-Segundo a verificação de importância das variáveis do modelo, os resultados estão apresentam consenso com o descrito pelos investigadores do artigo no qual o nosso trabalho se baseia [1]. Segundo os autores, as vias metabólicas que mais diferem entre as duas patologias são a glicólise, a biossíntese de aminoácidos e metabolismo de taurina e hipotaurina. É de esperar, portanto, que os metabolitos com maior importância estejam relacionados com estas vias. 
+
+-Verficar Importância dos metabolitos no diagnóstico usando a função varImp do Caret
+
+```{r}
+var_imp1 = varImp(res_train_model$final.models$rf)
+importance = var_imp1[order(var_imp1$Overall, decreasing = T),c(0,1)]
+var_imp_ord= as.data.frame(importance, row.names = rownames(var_imp1))
+head(var_imp_ord,10)
+
+var_imp2 = varImp(res_train_model$final.models$rf)
+importance = var_imp2[order(var_imp2$Overall, decreasing = T),c(0,1)]
+var_imp2_ord= as.data.frame(importance, row.names = rownames(var_imp2))
+head(var_imp2_ord,10)
+
+var_imp3 = varImp(res_train_model$final.models$nnet)
+importance = var_imp3[order(var_imp3$Overall, decreasing = T),c(0,1)]
+var_imp3_ord= as.data.frame(importance, row.names = rownames(var_imp1))
+head(var_imp3_ord,10)
+
+```
+
+-Selecção de atributos (foi utilizada validação cruzada com 3 folds e repetida 5 vezes)
+
+-Atributos seleccionados por este método quando fizemos o fit para uma árvore foram os seguintes:
+```{r}
+set.seed(115)
+#res_train_model1=feature_selection(significant_MTBLS564_known, "Diagnosis", method="rfe", functions = caret::ldaFuncs, validation = "repeatedcv", number = 3, subsets = 2^(1:6))
+#res_train_model1
+
+res_train_model2=feature_selection(significant_MTBLS564_known, "Diagnosis", method="rfe", functions = caret::treebagFuncs, validation = "repeatedcv", number = 3, subsets = 2^(1:6))
+res_train_model2 #resultados de fitting mais similares aos resultados de importância das variáveis do nosso modelo ao nosso modelo. O método é ideal para Regression e Classification models
+
+#res_train_model3=feature_selection(significant_MTBLS564_known, "Diagnosis", method="rfe", functions = caret::rfFuncs, validation = "repeatedcv", number = 3, subsets = 2^(1:6))
+#res_train_model3
+```
+
+##CONCLUSÃO - FASE 3
+
+-O metabolito com maior peso na classificação das patologias é categorizado como lípido móvel, este resultado pode ser explicado pelo facto de ser transportado e utilizado como fonte de energia nas articulações com hipoxia, característica de pacientes com RA.  Como descrito anteriormente, pacientes com RA demonstram menores valores de metabolitos pertencentes à glicólise e ao ciclo TCA devido à elevada inflamação e hipoxia causadas pela patologia. Como suporte desta conclusão também a isoleucina e hidroxybutyrate apresentam elevados valores de importância, na distinção entre RA e OA, sendo estes metabolitos característicos de atividade cetónica do organismo. Além disso, aminoácidos como a alanina, valina e prolina, que são substratos para a glicólise, revelaram-se com níveis maiores em pacientes de RA tratados com entanercept, sugerindo que estes aumentam com a diminuição da inflamação, sendo possível afirmar que os metabolistos participantes das vias cetónicas podem ser sinalizaores de pacientes com RA. 
+
+-Segundo os nossos resultados, a taurina e a hipotaurina, que caracterizam o nível de esclerose óssea presente em ambas as patologias, não atingiu o top 10 de importância dos metabolitos para classificar o diagnóstico. Em estudos prévios foram encontrados níveis de taurina maiores em RA do que em amostras controlo e do que em pacientes com OA. Apesar disso, o resultado da experiência realizada pelos autores demonstrou maiores níveis destes dois metabolitos em pacientes com OA. Talvez devido a esta ambiguidade, a taurina e hipotaurina possam não apresentar capacidade para distinguir o diagnostico entre as duas patologias em questão, segundo os resultados que obtivemos. Sendo assim, apesar de não serem um bom indicador da patologia, após esta ser diagnosticada serão talvez um bom indicador do estágio da mesma. 
+
+
+
+#REFERÊNCIAS
+1. Anderson, J. R. et al. 1H NMR Metabolomics Identifies Underlying Inflammatory Pathology in Osteoarthritis and Rheumatoid Arthritis Synovial Joints. Journal of Proteome Research 17, 3780–3790 (2018).
+
+2. Anderson, J. R., Phelan, M. M., Clegg, P. D., Peffers, M. J. & Rubio-Martinez, L. M. Synovial Fluid Metabolites Differentiate between Septic and Nonseptic Joint Pathologies. Journal of Proteome Research 17, 2735–2743 (2018).
+
+3. Costa, C., Maraschin, M. & Rocha, M. An R package for the integrated analysis of metabolomics and spectral data. Computer Methods and Programs in Biomedicine 129, 117–124 (2016).
+
+4. Picart-Armada, S., Fernández-Albert, F., Vinaixa, M., Yanes, O. & Perera-Lluna, A. FELLA: An R package to enrich metabolomics data. BMC Bioinformatics 19, (2018). 
+
+5. Xia, J. & Wishart, D. S. Using metaboanalyst 3.0 for comprehensive metabolomics data analysis. Current Protocols in Bioinformatics 2016, 14.10.1-14.10.91 (2016).
+
+6. Priori, R. et al. 1H-NMR-based metabolomic study for identifying serum profiles associated with the response to etanercept in patients with rheumatoid arthritis. PLoS ONE 10, (2015).
+
+7. Wright, H. L., Moots, R. J. & Edwards, S. W. The multifactorial role of neutrophils in rheumatoid arthritis. Nature Reviews Rheumatology 10, 593–601 (2014).
+
+8. Kramer, P. A., Ravi, S., Chacko, B., Johnson, M. S. & Darley-Usmar, V. M. A review of the mitochondrial and glycolytic metabolism in human platelets and leukocytes: Implications for their use as bioenergetic biomarkers. Redox Biology 2, 206–210 (2014).
+
+9. Young, S. P. et al. The impact of inflammation on metabolomic profiles in patients with arthritis. Arthritis and Rheumatism 65, 2015–2023 (2013).
+
+10. Yang, G. et al. Metabolic analysis of osteoarthritis subchondral bone based on UPLC/Q-TOF-MS. Analytical and Bioanalytical Chemistry 408, 4275–4286 (2016).
+
+11. Li, G. et al. Identical subchondral bone microarchitecture pattern with increasedbone resorption in rheumatoid arthritis as comparedtoosteoarthritis. Osteoarthritis and Cartilage 22, 2083–2092 (2014).
